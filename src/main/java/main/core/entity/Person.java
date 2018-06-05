@@ -1,6 +1,6 @@
 package main.core.entity;
 
-public class Person implements EntityLongId {
+public class Person {
 
     private Long _id;
     private String _lastName;

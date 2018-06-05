@@ -2,8 +2,8 @@ package main.core.batch;
 
 import main.core.batch.listener.JobCompletionNotificationListener;
 import main.core.batch.processor.PersonItemProcessor;
+import main.core.batch.reader.DatabaseItemReader;
 import main.core.entity.Person;
-import main.core.utils.QueryUtils;
 import main.core.utils.StringUtils;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.RowMapper;
 
 import javax.sql.DataSource;
 
@@ -28,22 +29,24 @@ import javax.sql.DataSource;
 @EnableBatchProcessing
 public class BatchConfiguration {
 
+    private static final String INSERT_TABLE_OUT = "INSERT INTO person_out (first_name, last_name) VALUES (:firstName, :lastName)";
+
     private JobBuilderFactory _jobBuilderFactory;
 
     private StepBuilderFactory _stepBuilderFactory;
 
-    private String[] entityStructure;
+    private String[] _entityStructure;
 
 
     public BatchConfiguration() {
-        entityStructure = new String[]{StringUtils.FIRST_NAME, StringUtils.LAST_NAME};
+        _entityStructure = new String[]{StringUtils.FIRST_NAME, StringUtils.LAST_NAME};
     }
 
     private FlatFileItemReader<Person> reader(String pathToData) {
         FlatFileItemReaderBuilder<Person> itemReaderBuilder = new FlatFileItemReaderBuilder<>();
         itemReaderBuilder.name(StringUtils.PERSON_ITEM_READER);
         itemReaderBuilder.resource(new ClassPathResource(pathToData));
-        itemReaderBuilder.delimited().delimiter(StringUtils.SEMICOLON).names(entityStructure).fieldSetMapper(new BeanWrapperFieldSetMapper<Person>() {{
+        itemReaderBuilder.delimited().delimiter(StringUtils.SEMICOLON).names(_entityStructure).fieldSetMapper(new BeanWrapperFieldSetMapper<Person>() {{
             setTargetType(Person.class);
         }});
         return itemReaderBuilder.build();
@@ -54,50 +57,35 @@ public class BatchConfiguration {
     }
 
     @Bean
-    public JdbcBatchItemWriter<Person> writerIn(DataSource dataSourceIn) {
+    public JdbcBatchItemWriter<Person> writer(DataSource dataSourceOut) {
         return new JdbcBatchItemWriterBuilder<Person>()
                 .itemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>())
-                .sql(QueryUtils.INSERT_TABLE_IN)
-                .dataSource(dataSourceIn)
-                .build();
-    }
-
-    @Bean
-    public JdbcBatchItemWriter<Person> writerOut(DataSource dataSourceOut) {
-        return new JdbcBatchItemWriterBuilder<Person>()
-                .itemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>())
-                .sql(QueryUtils.INSERT_TABLE_OUT)
+                .sql(INSERT_TABLE_OUT)
                 .dataSource(dataSourceOut)
                 .build();
     }
 
     @Bean
-    public Job importUserJob(JobCompletionNotificationListener listener, Step stepIn, Step stepOut) {
+    public Job importUserJob(JobCompletionNotificationListener listener, Step step) {
         return _jobBuilderFactory.get(StringUtils.IMPORT_USER_JOB)
                 .incrementer(new RunIdIncrementer())
                 .listener(listener)
-                .start(stepIn)
-                .next(stepOut)
+                .flow(step)
+                .end()
                 .build();
     }
 
     @Bean
-    public Step stepIn(JdbcBatchItemWriter<Person> writerIn) {
-        return _stepBuilderFactory.get(StringUtils.STEP_IN)
+    public Step step(JdbcBatchItemWriter<Person> writer, DataSource dataSourceIn, RowMapper<Person> personRowMapper) {
+        DatabaseItemReader reader = new DatabaseItemReader();
+        reader.setDataSourceIn(dataSourceIn);
+        reader.setRowMapper(personRowMapper);
+        reader.setSql();
+        return _stepBuilderFactory.get(StringUtils.TRANSFERT)
                 .<Person, Person>chunk(10)
-                .reader(reader(StringUtils.SAMPLE_DATA_STEP_1))
+                .reader(reader)
                 .processor(processor())
-                .writer(writerIn)
-                .build();
-    }
-
-    @Bean
-    public Step stepOut(JdbcBatchItemWriter<Person> writerOut) {
-        return _stepBuilderFactory.get(StringUtils.STEP_OUT)
-                .<Person, Person>chunk(10)
-                .reader(reader(StringUtils.SAMPLE_DATA_STEP_2))
-                .processor(processor())
-                .writer(writerOut)
+                .writer(writer)
                 .build();
     }
 

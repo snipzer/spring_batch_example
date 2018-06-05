@@ -15,12 +15,9 @@ import java.util.List;
 public class JobCompletionNotificationListener extends JobExecutionListenerSupport {
 
     private static final Logger log = LoggerFactory.getLogger(JobCompletionNotificationListener.class);
-    private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    public JobCompletionNotificationListener(JdbcTemplate jdbcTemplate) {
+    public JobCompletionNotificationListener() {
         super();
-        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
